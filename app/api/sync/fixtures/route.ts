@@ -15,7 +15,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
-import { TOURNAMENT_PLACEHOLDER_MAP } from '@/lib/calendar/tournament-placeholders'
+import { fetchFDTBDKnockoutFixtures, isFDSupportedLeague } from '@/lib/sports/football-data'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
 const CRON_SECRET = process.env.CRON_SECRET ?? ''
@@ -352,50 +352,73 @@ export async function POST(request: NextRequest) {
       stats.errors.push(`${entity.sport}/${entity.entity_type}/${entity.entity_id}: ${msg}`)
     }
 
-    // ── Knockout placeholder injection ──────────────────────────────────────
-    // For known tournaments (WC, UCL etc.) the API only publishes knockout
-    // fixtures once teams are confirmed.  We inject synthetic placeholders for
-    // rounds not yet in the API so users see "FIFA World Cup – Final" on
-    // July 19 from day one.  Once the real fixture is published by the API the
-    // placeholder round is covered and we delete the stale placeholder row(s).
-    if (entity.entity_type === 'league') {
-      const placeholderKey = `${entity.entity_id}:${sportSeason}`
-      const tourPlaceholders = TOURNAMENT_PLACEHOLDER_MAP[placeholderKey]
-      if (tourPlaceholders && tourPlaceholders.length > 0) {
-        // Build the set of rounds covered by real API fixtures for this entity
-        // (raw was defined earlier in the try block — grab it from fixturesToUpsert)
+    // ── Knockout placeholder injection (football-data.org) ──────────────────
+    // api-sports.io only publishes knockout fixtures once teams are confirmed
+    // (often days before the game). football-data.org publishes the full
+    // bracket immediately after the tournament draw with null team slots.
+    //
+    // We fetch those TBD slots and inject them as "fdo_" prefixed placeholders
+    // so users see "FIFA World Cup – Final" on July 19 from day one.
+    //
+    // When a round's real fixtures finally appear in api-sports.io:
+    //   1. coveredRounds detects the round is now covered
+    //   2. All placeholder (fdo_* / ph_*) rows for that round are deleted
+    //   3. The real fixture upsert takes over
+    //
+    // Enable by setting FOOTBALL_DATA_API_KEY in .env.local (free tier, email only):
+    //   https://www.football-data.org/client/register
+    if (entity.entity_type === 'league' && isFDSupportedLeague(entity.entity_id)) {
+      const fdPlaceholders = await fetchFDTBDKnockoutFixtures(entity.entity_id, sportSeason)
+
+      if (fdPlaceholders.length > 0) {
+        // Rounds already covered by real (non-placeholder) api-sports fixtures
         const coveredRounds = new Set<string>(
           fixturesToUpsert
-            .filter(
-              (f) =>
+            .filter((f) => {
+              const fid = String((f as Record<string, unknown>).fixture_id)
+              return (
                 f.sport === entity.sport &&
                 (f as Record<string, unknown>).league_id === entity.entity_id &&
-                !String((f as Record<string, unknown>).fixture_id).startsWith('ph_')
-            )
+                !fid.startsWith('fdo_') &&
+                !fid.startsWith('ph_')
+              )
+            })
             .map((f) => (f as Record<string, unknown>).round as string)
             .filter(Boolean)
         )
 
-        // Group placeholder rounds
-        const placeholderRounds = [...new Set(tourPlaceholders.map((p) => p.round))]
+        const placeholderRounds = [...new Set(fdPlaceholders.map((p) => p.round).filter(Boolean))]
 
-        // Delete stale placeholders for rounds now covered by real data
-        const stalRounds = placeholderRounds.filter((r) => coveredRounds.has(r))
-        if (stalRounds.length > 0) {
-          const staleIds = tourPlaceholders
-            .filter((p) => stalRounds.includes(p.round))
-            .map((p) => p.fixture_id)
+        // Delete any stale placeholder rows for rounds now covered by real data.
+        // This handles both new "fdo_" rows and old "ph_" rows from the previous system.
+        const staleRounds = placeholderRounds.filter((r) => coveredRounds.has(r))
+        if (staleRounds.length > 0) {
           await supabase
             .from('cached_fixtures')
             .delete()
             .eq('sport', entity.sport)
-            .in('fixture_id', staleIds)
+            .eq('league_id', entity.entity_id)
+            .in('round', staleRounds)
+            .or('fixture_id.like.fdo_%,fixture_id.like.ph_%')
         }
 
-        // Inject placeholders for rounds not yet covered by real data
+        // On first run with the new system: clean up any leftover "ph_" placeholders
+        // for rounds that are still TBD (not yet covered). These were from the old
+        // hardcoded system and will be replaced by the fdo_ rows below.
         const missingRounds = placeholderRounds.filter((r) => !coveredRounds.has(r))
-        for (const ph of tourPlaceholders) {
-          if (missingRounds.includes(ph.round)) {
+        if (missingRounds.length > 0) {
+          await supabase
+            .from('cached_fixtures')
+            .delete()
+            .eq('sport', entity.sport)
+            .eq('league_id', entity.entity_id)
+            .in('round', missingRounds)
+            .like('fixture_id', 'ph_%')
+        }
+
+        // Inject fdo_ placeholders for rounds not yet covered by real data
+        for (const ph of fdPlaceholders) {
+          if (ph.round && missingRounds.includes(ph.round)) {
             fixturesToUpsert.push({
               ...ph,
               fetched_at: new Date().toISOString(),
