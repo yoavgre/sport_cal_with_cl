@@ -15,6 +15,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
+import { TOURNAMENT_PLACEHOLDER_MAP } from '@/lib/calendar/tournament-placeholders'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
 const CRON_SECRET = process.env.CRON_SECRET ?? ''
@@ -350,6 +351,61 @@ export async function POST(request: NextRequest) {
       const msg = err instanceof Error ? err.message : String(err)
       stats.errors.push(`${entity.sport}/${entity.entity_type}/${entity.entity_id}: ${msg}`)
     }
+
+    // ── Knockout placeholder injection ──────────────────────────────────────
+    // For known tournaments (WC, UCL etc.) the API only publishes knockout
+    // fixtures once teams are confirmed.  We inject synthetic placeholders for
+    // rounds not yet in the API so users see "FIFA World Cup – Final" on
+    // July 19 from day one.  Once the real fixture is published by the API the
+    // placeholder round is covered and we delete the stale placeholder row(s).
+    if (entity.entity_type === 'league') {
+      const placeholderKey = `${entity.entity_id}:${sportSeason}`
+      const tourPlaceholders = TOURNAMENT_PLACEHOLDER_MAP[placeholderKey]
+      if (tourPlaceholders && tourPlaceholders.length > 0) {
+        // Build the set of rounds covered by real API fixtures for this entity
+        // (raw was defined earlier in the try block — grab it from fixturesToUpsert)
+        const coveredRounds = new Set<string>(
+          fixturesToUpsert
+            .filter(
+              (f) =>
+                f.sport === entity.sport &&
+                (f as Record<string, unknown>).league_id === entity.entity_id &&
+                !String((f as Record<string, unknown>).fixture_id).startsWith('ph_')
+            )
+            .map((f) => (f as Record<string, unknown>).round as string)
+            .filter(Boolean)
+        )
+
+        // Group placeholder rounds
+        const placeholderRounds = [...new Set(tourPlaceholders.map((p) => p.round))]
+
+        // Delete stale placeholders for rounds now covered by real data
+        const stalRounds = placeholderRounds.filter((r) => coveredRounds.has(r))
+        if (stalRounds.length > 0) {
+          const staleIds = tourPlaceholders
+            .filter((p) => stalRounds.includes(p.round))
+            .map((p) => p.fixture_id)
+          await supabase
+            .from('cached_fixtures')
+            .delete()
+            .eq('sport', entity.sport)
+            .in('fixture_id', staleIds)
+        }
+
+        // Inject placeholders for rounds not yet covered by real data
+        const missingRounds = placeholderRounds.filter((r) => !coveredRounds.has(r))
+        for (const ph of tourPlaceholders) {
+          if (missingRounds.includes(ph.round)) {
+            fixturesToUpsert.push({
+              ...ph,
+              fetched_at: new Date().toISOString(),
+            } as typeof fixturesToUpsert[number])
+            stats.synced++
+          }
+        }
+      }
+    }
+    // ────────────────────────────────────────────────────────────────────────
   }
 
   // Batch upsert fixtures
