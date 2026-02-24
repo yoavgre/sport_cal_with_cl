@@ -23,17 +23,22 @@ export function fixtureToCalendarEvent(fixture: CachedFixture): CalendarEvent {
   let awayScore: number | null = null
   let leagueName: string | null = null
   let leagueLogo: string | null = null
+  let round: string | null = fixture.round ?? null
 
   if (fixture.sport === 'football') {
     const teams = raw.teams as Record<string, unknown>
     const goals = raw.goals as Record<string, unknown>
     const league = raw.league as Record<string, unknown>
-    homeTeam = (teams?.home as Record<string, unknown>)?.name as string ?? null
-    awayTeam = (teams?.away as Record<string, unknown>)?.name as string ?? null
+    const rawHome = (teams?.home as Record<string, unknown>)?.name as string ?? null
+    const rawAway = (teams?.away as Record<string, unknown>)?.name as string ?? null
+    // Treat null or "TBD" as unknown
+    homeTeam = rawHome && rawHome !== 'TBD' ? rawHome : null
+    awayTeam = rawAway && rawAway !== 'TBD' ? rawAway : null
     homeScore = goals?.home as number ?? null
     awayScore = goals?.away as number ?? null
     leagueName = league?.name as string ?? null
     leagueLogo = league?.logo as string ?? null
+    if (!round) round = league?.round as string ?? null
   } else if (fixture.sport === 'basketball') {
     const teams = raw.teams as Record<string, unknown>
     const scores = raw.scores as Record<string, unknown>
@@ -53,9 +58,12 @@ export function fixtureToCalendarEvent(fixture: CachedFixture): CalendarEvent {
     leagueLogo = league?.logo as string ?? null
   }
 
+  // Build a meaningful title even when teams are TBD (knockout stage placeholder fixtures)
   const title = homeTeam && awayTeam
     ? `${homeTeam} vs ${awayTeam}`
-    : leagueName ?? 'Match'
+    : round
+      ? `${leagueName ? `${leagueName} – ` : ''}${round}`
+      : leagueName ?? 'Match'
 
   return {
     id: `${fixture.sport}-${fixture.fixture_id}`,

@@ -160,8 +160,8 @@ export async function GET(request: NextRequest) {
         )
       }
 
-      // Search players (football only)
-      if ((!type || type === 'player') && s === 'football') {
+      // Search players (football only) — api-sports requires 4+ chars for player name search
+      if ((!type || type === 'player') && s === 'football' && query.length >= 4) {
         // Primary: search by player name directly
         tasks.push(
           proxyFetch('football', 'players', { search: query, season }).then((items) => {

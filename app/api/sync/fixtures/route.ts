@@ -205,11 +205,13 @@ export async function POST(request: NextRequest) {
 
   const supabase = createServiceClient()
 
-  // Date window: past 7 days → next 60 days
+  // Date window: past 7 days → next 365 days
+  // Extended so knockout-stage fixtures for tournaments like the World Cup and
+  // Champions League final are captured even when teams aren't determined yet.
   const fromDate = new Date()
   fromDate.setDate(fromDate.getDate() - 7)
   const toDate = new Date()
-  toDate.setDate(toDate.getDate() + 60)
+  toDate.setDate(toDate.getDate() + 365)
   const from = fromDate.toISOString().split('T')[0]
   const to = toDate.toISOString().split('T')[0]
 

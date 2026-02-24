@@ -95,13 +95,15 @@ export function Sidebar({ follows }: SidebarProps) {
                   </p>
                   {sportFollows.slice(0, 6).map((follow) => {
                     const logoUrl = follow.entity_metadata?.logo_url as string | undefined
+                    const season = follow.entity_metadata?.season as string | undefined
+                    const seasonSuffix = season ? `?season=${encodeURIComponent(season)}` : ''
                     const browseHref =
                       follow.entity_type === 'team'
-                        ? `/browse/${follow.sport}/teams/${follow.entity_id}`
+                        ? `/browse/${follow.sport}/teams/${follow.entity_id}${seasonSuffix}`
                         : follow.entity_type === 'player'
-                          ? `/browse/${follow.sport}/players/${follow.entity_id}`
+                          ? `/browse/${follow.sport}/players/${follow.entity_id}${seasonSuffix}`
                           : follow.entity_type === 'league'
-                            ? `/browse/${follow.sport}/${follow.entity_id}`
+                            ? `/browse/${follow.sport}/${follow.entity_id}${seasonSuffix}`
                             : `/browse/${follow.sport}`
 
                     return (

@@ -181,6 +181,11 @@ export default function SearchClient() {
           <Search className="h-10 w-10 mx-auto mb-3 opacity-15" />
           <p className="font-medium text-foreground/70">Search for a league, team, or player</p>
           <p className="text-sm mt-1 opacity-50">Try &ldquo;Arsenal&rdquo;, &ldquo;Premier League&rdquo;, or &ldquo;Messi&rdquo;</p>
+          <div className="mt-6 inline-flex flex-col gap-1.5 text-left text-xs text-muted-foreground/50 bg-white/[0.03] border border-white/[0.05] rounded-xl px-4 py-3">
+            <p>⚽ Football: leagues, clubs, national teams &amp; players</p>
+            <p>🏀 Basketball: leagues &amp; teams</p>
+            <p className="opacity-70">Player search requires 4+ characters</p>
+          </div>
         </div>
       )}
     </div>

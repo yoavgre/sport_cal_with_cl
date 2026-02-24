@@ -29,6 +29,9 @@ function FixtureRow({ fixture }: { fixture: Fixture }) {
   const isFinished = fixture.status && FINISHED_STATUSES.includes(fixture.status)
   const isLive = fixture.status && LIVE_STATUSES.includes(fixture.status)
   const hasScore = isFinished || isLive
+  const homeName = fixture.homeTeam?.name || null
+  const awayName = fixture.awayTeam?.name || null
+  const isTeamsKnown = !!homeName && !!awayName && homeName !== 'TBD' && awayName !== 'TBD'
 
   return (
     <div className="flex items-center gap-3 px-4 py-3 hover:bg-white/[0.03] transition-colors">
@@ -49,38 +52,52 @@ function FixtureRow({ fixture }: { fixture: Fixture }) {
       </div>
 
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          <div className="w-5 h-5 shrink-0">
-            {fixture.homeTeam?.logo && (
-              <Image src={fixture.homeTeam.logo} alt={fixture.homeTeam.name} width={20} height={20} className="object-contain" />
+        {isTeamsKnown ? (
+          <>
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-5 h-5 shrink-0">
+                {fixture.homeTeam?.logo && (
+                  <Image src={fixture.homeTeam.logo} alt={homeName!} width={20} height={20} className="object-contain" />
+                )}
+              </div>
+              <span className={`text-sm truncate ${isFinished && (fixture.homeScore ?? 0) > (fixture.awayScore ?? 0) ? 'font-semibold' : 'text-foreground/80'}`}>
+                {homeName}
+              </span>
+              {hasScore && (
+                <span className={`ml-auto text-sm font-bold shrink-0 ${isFinished && (fixture.homeScore ?? 0) > (fixture.awayScore ?? 0) ? 'text-foreground' : 'text-muted-foreground'}`}>
+                  {fixture.homeScore ?? 0}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 shrink-0">
+                {fixture.awayTeam?.logo && (
+                  <Image src={fixture.awayTeam.logo} alt={awayName!} width={20} height={20} className="object-contain" />
+                )}
+              </div>
+              <span className={`text-sm truncate ${isFinished && (fixture.awayScore ?? 0) > (fixture.homeScore ?? 0) ? 'font-semibold' : 'text-foreground/80'}`}>
+                {awayName}
+              </span>
+              {hasScore && (
+                <span className={`ml-auto text-sm font-bold shrink-0 ${isFinished && (fixture.awayScore ?? 0) > (fixture.homeScore ?? 0) ? 'text-foreground' : 'text-muted-foreground'}`}>
+                  {fixture.awayScore ?? 0}
+                </span>
+              )}
+            </div>
+            {fixture.leagueName && (
+              <p className="text-[10px] text-muted-foreground/50 mt-1 truncate">{fixture.leagueName}</p>
             )}
+          </>
+        ) : (
+          /* TBD fixture — knockout stage placeholder */
+          <div>
+            <p className="text-sm font-medium text-foreground/90 truncate">
+              {fixture.round ?? 'Fixture TBD'}
+            </p>
+            <p className="text-xs text-muted-foreground/60 mt-0.5">
+              {fixture.leagueName ?? ''}{fixture.leagueName && ' · '}Teams to be determined
+            </p>
           </div>
-          <span className={`text-sm truncate ${isFinished && (fixture.homeScore ?? 0) > (fixture.awayScore ?? 0) ? 'font-semibold' : 'text-foreground/80'}`}>
-            {fixture.homeTeam?.name ?? '—'}
-          </span>
-          {hasScore && (
-            <span className={`ml-auto text-sm font-bold shrink-0 ${isFinished && (fixture.homeScore ?? 0) > (fixture.awayScore ?? 0) ? 'text-foreground' : 'text-muted-foreground'}`}>
-              {fixture.homeScore ?? 0}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-5 h-5 shrink-0">
-            {fixture.awayTeam?.logo && (
-              <Image src={fixture.awayTeam.logo} alt={fixture.awayTeam.name} width={20} height={20} className="object-contain" />
-            )}
-          </div>
-          <span className={`text-sm truncate ${isFinished && (fixture.awayScore ?? 0) > (fixture.homeScore ?? 0) ? 'font-semibold' : 'text-foreground/80'}`}>
-            {fixture.awayTeam?.name ?? '—'}
-          </span>
-          {hasScore && (
-            <span className={`ml-auto text-sm font-bold shrink-0 ${isFinished && (fixture.awayScore ?? 0) > (fixture.homeScore ?? 0) ? 'text-foreground' : 'text-muted-foreground'}`}>
-              {fixture.awayScore ?? 0}
-            </span>
-          )}
-        </div>
-        {fixture.leagueName && (
-          <p className="text-[10px] text-muted-foreground/50 mt-1 truncate">{fixture.leagueName}</p>
         )}
       </div>
     </div>
@@ -287,7 +304,7 @@ export default async function TeamPage({ params, searchParams }: PageProps) {
             entityId={teamId}
             entityName={teamName}
             sport={sport}
-            entityMetadata={{ logo_url: teamLogo, country: teamCountry }}
+            entityMetadata={{ logo_url: teamLogo, country: teamCountry, season }}
             initialFollowed={!!followRow}
           />
         </div>
