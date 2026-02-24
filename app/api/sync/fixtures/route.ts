@@ -223,20 +223,23 @@ export async function POST(request: NextRequest) {
   // Determine scope: sync all unique followed entities across all users
   const { data: allFollows } = await supabase
     .from('follows')
-    .select('entity_type, entity_id, sport')
+    .select('entity_type, entity_id, sport, entity_metadata')
 
   if (!allFollows || allFollows.length === 0) {
     return NextResponse.json({ synced: 0, new: 0, updated: 0, changes: 0, errors: [] })
   }
 
-  // Deduplicate: unique (entity_type, entity_id, sport) combos
+  // Deduplicate: unique (entity_type, entity_id, sport, season) combos
+  // Include season from entity_metadata so World Cup 2026 (season "2026") is
+  // fetched with the correct season, not the club-football default ("2025").
   const seen = new Set<string>()
-  const uniqueEntities: Array<{ entity_type: string; entity_id: string; sport: string }> = []
+  const uniqueEntities: Array<{ entity_type: string; entity_id: string; sport: string; metaSeason?: string }> = []
   for (const f of allFollows) {
-    const key = `${f.entity_type}:${f.entity_id}:${f.sport}`
+    const metaSeason = (f.entity_metadata as Record<string, unknown> | null)?.season as string | undefined
+    const key = `${f.entity_type}:${f.entity_id}:${f.sport}:${metaSeason ?? ''}`
     if (!seen.has(key)) {
       seen.add(key)
-      uniqueEntities.push(f)
+      uniqueEntities.push({ entity_type: f.entity_type, entity_id: f.entity_id, sport: f.sport, metaSeason })
     }
   }
 
@@ -268,7 +271,7 @@ export async function POST(request: NextRequest) {
 
     const sportKey = entity.sport
     const paramKey = entity.entity_type === 'team' ? 'team' : 'league'
-    const sportSeason = sportKey === 'basketball' ? basketballSeason : season
+    const sportSeason = sportKey === 'basketball' ? basketballSeason : (entity.metaSeason ?? season)
 
     try {
       const raw = await fetchFixtures(sportKey, paramKey, entity.entity_id, sportSeason, from, to)
