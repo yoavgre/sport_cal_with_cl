@@ -7,9 +7,10 @@ import timeGridPlugin from '@fullcalendar/timegrid'
 import listPlugin from '@fullcalendar/list'
 import interactionPlugin from '@fullcalendar/interaction'
 import type { EventClickArg, EventInput } from '@fullcalendar/core'
-import type { Follow } from '@/types/database'
+import type { Follow, CachedFixture } from '@/types/database'
 import type { CalendarEvent } from '@/types/sports'
 import { SPORT_COLORS } from '@/types/sports'
+import { fixtureToCalendarEvent } from '@/lib/calendar/fixture-to-event'
 import {
   Sheet,
   SheetContent,
@@ -64,97 +65,44 @@ export default function CalendarView({ follows }: CalendarViewProps) {
 
     setLoading(true)
     try {
-      const fromDate = new Date()
-      fromDate.setDate(fromDate.getDate() - 7)
-      const toDate = new Date()
-      toDate.setDate(toDate.getDate() + 60)
+      // Read from cached_fixtures via our events API — no season or date-range
+      // restrictions here; sync already populated all upcoming fixtures.
+      const res = await fetch('/api/calendar/events')
+      if (!res.ok) throw new Error('Failed to fetch events')
 
-      const from = fromDate.toISOString().split('T')[0]
-      const to = toDate.toISOString().split('T')[0]
+      const fixtures: CachedFixture[] = await res.json()
 
-      // Football season: year the season STARTS (before Aug → previous year)
-      const now = new Date()
-      const footballSeason = now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1
-
-      // Basketball season: "YYYY-YYYY" string format, pick most recent ended season
-      // Free plan caps at 2024-2025 so we use that; this should auto-update when plan upgrades
-      const basketballSeason = now.getMonth() >= 9
-        ? `${now.getFullYear()}-${now.getFullYear() + 1}`
-        : `${now.getFullYear() - 1}-${now.getFullYear()}`
-
-      const teamFollows = follows.filter((f) => f.entity_type === 'team')
-      const leagueFollows = follows.filter((f) => f.entity_type === 'league')
-
-      const allEvents: CalendarEvent[] = []
-
-      // Fetch football fixtures for followed teams
-      const footballTeams = teamFollows.filter((f) => f.sport === 'football')
-      const footballLeagues = leagueFollows.filter((f) => f.sport === 'football')
-
-      for (const follow of footballTeams) {
-        try {
-          const res = await fetch(
-            `/api/sports/football/fixtures?team=${follow.entity_id}&from=${from}&to=${to}&season=${footballSeason}`
-          )
-          if (res.ok) {
-            const data = await res.json()
-            allEvents.push(...mapFootballFixtures(data.response ?? [], 'football'))
+      // Map CachedFixture → CalendarEvent using the shared helper
+      const calEvents = fixtures
+        .map((f) => {
+          try {
+            return fixtureToCalendarEvent(f)
+          } catch {
+            return null
           }
-        } catch {}
-      }
-
-      for (const follow of footballLeagues) {
-        try {
-          const res = await fetch(
-            `/api/sports/football/fixtures?league=${follow.entity_id}&from=${from}&to=${to}&season=${footballSeason}`
-          )
-          if (res.ok) {
-            const data = await res.json()
-            allEvents.push(...mapFootballFixtures(data.response ?? [], 'football'))
-          }
-        } catch {}
-      }
-
-      // Fetch basketball games for followed teams/leagues
-      // Basketball API doesn't support from/to date range — fetch by season only
-      // (season param returns all games for that season; we filter by date client-side)
-      const basketballTeams = teamFollows.filter((f) => f.sport === 'basketball')
-      const basketballLeagues = leagueFollows.filter((f) => f.sport === 'basketball')
-
-      for (const follow of [...basketballTeams, ...basketballLeagues]) {
-        try {
-          const param = follow.entity_type === 'team' ? 'team' : 'league'
-          const res = await fetch(
-            `/api/sports/basketball/games?${param}=${follow.entity_id}&season=${encodeURIComponent(basketballSeason)}`
-          )
-          if (res.ok) {
-            const data = await res.json()
-            // Filter to our date window client-side
-            const games = (data.response ?? []).filter((g: Record<string, unknown>) => {
-              const d = g.date as string
-              if (!d) return false
-              return d >= from && d <= to
-            })
-            allEvents.push(...mapBasketballGames(games))
-          }
-        } catch {}
-      }
+        })
+        .filter((e): e is CalendarEvent => e !== null)
 
       // Deduplicate by event id
-      const unique = Array.from(new Map(allEvents.map((e) => [e.id, e])).values())
+      const unique = Array.from(new Map(calEvents.map((e) => [e.id, e])).values())
       setEvents(unique)
+    } catch (err) {
+      console.error('[CalendarView] fetchEvents error:', err)
     } finally {
       setLoading(false)
     }
   }, [follows])
 
   useEffect(() => {
-    // Trigger sync in background, then fetch events
     if (follows.length > 0) {
       setSyncStatus('syncing')
-      triggerBackgroundSync().finally(() => setSyncStatus('done'))
+      triggerBackgroundSync().finally(() => {
+        setSyncStatus('done')
+        fetchEvents()
+      })
+    } else {
+      fetchEvents()
     }
-    fetchEvents()
   }, [fetchEvents, follows.length])
 
   const handleEventClick = (info: EventClickArg) => {
@@ -182,7 +130,7 @@ export default function CalendarView({ follows }: CalendarViewProps) {
             <p className="text-xs text-muted-foreground">
               {syncStatus === 'syncing' && '⟳ Syncing fixtures…'}
               {syncStatus === 'done' && events.length > 0 && `${events.length} fixture${events.length !== 1 ? 's' : ''} loaded`}
-              {syncStatus === 'done' && !loading && events.length === 0 && 'No fixtures found in the next 60 days'}
+              {syncStatus === 'done' && !loading && events.length === 0 && 'No upcoming fixtures found'}
             </p>
             <Button
               variant="ghost"
@@ -287,76 +235,3 @@ export default function CalendarView({ follows }: CalendarViewProps) {
     </>
   )
 }
-
-// Mapping helpers
-function mapFootballFixtures(response: unknown[], sport: string): CalendarEvent[] {
-  return response.map((item) => {
-    const i = item as Record<string, unknown>
-    const fixture = i.fixture as Record<string, unknown>
-    const league = i.league as Record<string, unknown>
-    const teams = i.teams as Record<string, unknown>
-    const goals = i.goals as Record<string, unknown>
-    const home = (teams?.home ?? {}) as Record<string, unknown>
-    const away = (teams?.away ?? {}) as Record<string, unknown>
-    const status = fixture.status as Record<string, unknown>
-
-    const homeTeam = home.name as string ?? null
-    const awayTeam = away.name as string ?? null
-    const start = new Date(fixture.date as string)
-    const end = new Date(start.getTime() + 105 * 60 * 1000)
-
-    return {
-      id: `football-${fixture.id}`,
-      title: homeTeam && awayTeam ? `${homeTeam} vs ${awayTeam}` : 'Match',
-      start,
-      end,
-      sport,
-      leagueId: String(league?.id),
-      venue: (fixture.venue as Record<string, unknown>)?.name as string ?? null,
-      status: status?.short as string ?? null,
-      homeTeam,
-      awayTeam,
-      homeScore: goals?.home as number ?? null,
-      awayScore: goals?.away as number ?? null,
-      leagueName: league?.name as string ?? null,
-      leagueLogo: league?.logo as string ?? null,
-    } as CalendarEvent
-  })
-}
-
-function mapBasketballGames(response: unknown[]): CalendarEvent[] {
-  return response.map((item) => {
-    const i = item as Record<string, unknown>
-    const teams = i.teams as Record<string, unknown>
-    const scores = i.scores as Record<string, unknown>
-    const league = i.league as Record<string, unknown>
-    const status = i.status as Record<string, unknown>
-    const home = (teams?.home ?? {}) as Record<string, unknown>
-    const away = (teams?.away ?? {}) as Record<string, unknown>
-    const homeScore = (scores?.home ?? {}) as Record<string, unknown>
-    const awayScore = (scores?.away ?? {}) as Record<string, unknown>
-
-    const homeTeam = home.name as string ?? null
-    const awayTeam = away.name as string ?? null
-    const start = new Date(i.date as string)
-    const end = new Date(start.getTime() + 150 * 60 * 1000)
-
-    return {
-      id: `basketball-${i.id}`,
-      title: homeTeam && awayTeam ? `${homeTeam} vs ${awayTeam}` : 'Game',
-      start,
-      end,
-      sport: 'basketball',
-      leagueId: String(league?.id),
-      venue: null,
-      status: status?.short as string ?? null,
-      homeTeam,
-      awayTeam,
-      homeScore: homeScore?.total as number ?? null,
-      awayScore: awayScore?.total as number ?? null,
-      leagueName: league?.name as string ?? null,
-      leagueLogo: league?.logo as string ?? null,
-    } as CalendarEvent
-  })
-}
-

@@ -354,10 +354,17 @@ export async function POST(request: NextRequest) {
 
   // Batch upsert fixtures
   if (fixturesToUpsert.length > 0) {
+    // Deduplicate by (sport, fixture_id) — same fixture can appear from multiple
+    // entity queries (e.g. league + team follow for the same game, or the same
+    // league followed with two different stored seasons). Keep last entry.
+    const dedupedFixtures = Array.from(
+      new Map(fixturesToUpsert.map((f) => [`${f.sport}:${f.fixture_id}`, f])).values()
+    )
+
     // Upsert in chunks of 100 to avoid request size limits
     const CHUNK = 100
-    for (let i = 0; i < fixturesToUpsert.length; i += CHUNK) {
-      const chunk = fixturesToUpsert.slice(i, i + CHUNK)
+    for (let i = 0; i < dedupedFixtures.length; i += CHUNK) {
+      const chunk = dedupedFixtures.slice(i, i + CHUNK)
       const { error } = await supabase
         .from('cached_fixtures')
         .upsert(chunk, { onConflict: 'sport,fixture_id' })

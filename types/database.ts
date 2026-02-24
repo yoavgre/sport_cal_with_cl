@@ -34,6 +34,14 @@ export interface CachedFixture {
   season: string
   home_team_id: string | null
   away_team_id: string | null
+  home_team_name: string | null
+  away_team_name: string | null
+  home_team_logo: string | null
+  away_team_logo: string | null
+  league_name: string | null
+  league_logo: string | null
+  home_score: number | null
+  away_score: number | null
   player_ids: string[]
   tournament_id: string | null
   start_time: string
