@@ -43,7 +43,13 @@ export async function GET(
   if (cached) {
     const ageSeconds =
       (Date.now() - new Date(cached.fetched_at).getTime()) / 1000
-    if (ageSeconds < cached.ttl_seconds) {
+    const cachedErrors = (cached.response as Record<string, unknown>)?.errors
+    const cachedHasErrors =
+      cachedErrors &&
+      typeof cachedErrors === 'object' &&
+      Object.keys(cachedErrors as object).length > 0
+    // Don't serve cached responses that contain API errors (e.g. past rate-limit responses)
+    if (!cachedHasErrors && ageSeconds < cached.ttl_seconds) {
       return Response.json(cached.response)
     }
   }
@@ -65,6 +71,24 @@ export async function GET(
     return Response.json(
       { error: String(err) },
       { status: 502 }
+    )
+  }
+
+  // Detect api-sports.io error responses (e.g. rate limit).
+  // These come back as HTTP 200 with { errors: { rateLimit: '...' }, response: [] }.
+  // Never cache them — serve stale if available, otherwise return 429.
+  const errors = fresh.errors as Record<string, unknown> | null | undefined
+  const hasErrors = errors && typeof errors === 'object' && Object.keys(errors).length > 0
+  if (hasErrors) {
+    if (cached) {
+      return Response.json(cached.response)
+    }
+    const isRateLimit = Object.keys(errors).some((k) =>
+      k.toLowerCase().includes('rate')
+    )
+    return Response.json(
+      { error: 'API error', errors },
+      { status: isRateLimit ? 429 : 502 }
     )
   }
 

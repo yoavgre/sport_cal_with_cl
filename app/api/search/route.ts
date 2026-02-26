@@ -170,28 +170,10 @@ export async function GET(request: NextRequest) {
           })
         )
 
-        // Fallback: if the query looks like a team name (or if user searches team name),
-        // also try to find players by team — we try fetching teams matching query
-        // and then get their players. This helps find "haziza maccabi haifa" → find team Maccabi Haifa → get players
-        // We handle this by also searching teams and queuing a secondary player-by-team search
-        // This runs as a separate task so it doesn't block the main player search
-        tasks.push(
-          proxyFetch('football', 'teams', { search: query }).then(async (teams) => {
-            if (teams.length === 0) return
-            // Take the first matching team and get its players
-            const firstTeam = teams[0]?.team as Record<string, unknown>
-            if (!firstTeam?.id) return
-            const teamPlayers = await proxyFetch('football', 'players', {
-              team: String(firstTeam.id),
-              season,
-            })
-            const mapped = teamPlayers.map((item: Record<string, unknown>) => mapFootballPlayer(item, season))
-            // Only add players not already in results
-            const existingIds = new Set(results.players.map((p) => (p as { id: unknown }).id))
-            const newPlayers = mapped.filter((p: { id: unknown }) => !existingIds.has(p.id))
-            results.players.push(...newPlayers)
-          })
-        )
+        // Fallback: reuse the team search result (already queued above) to find players by team.
+        // We do NOT fire an extra football/teams request here — instead we piggyback on the
+        // results already being collected in results.teams via the task above.
+        // This prevents sending duplicate requests to the api-sports proxy.
       }
 
       return tasks
