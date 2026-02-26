@@ -66,6 +66,8 @@ export interface CalendarEvent {
   status: string | null
   homeTeam: string | null
   awayTeam: string | null
+  homeTeamLogo: string | null
+  awayTeamLogo: string | null
   homeScore: number | null
   awayScore: number | null
   leagueName: string | null

@@ -76,6 +76,8 @@ export function fixtureToCalendarEvent(fixture: CachedFixture): CalendarEvent {
     status: fixture.status,
     homeTeam,
     awayTeam,
+    homeTeamLogo: fixture.home_team_logo ?? null,
+    awayTeamLogo: fixture.away_team_logo ?? null,
     homeScore,
     awayScore,
     leagueName,

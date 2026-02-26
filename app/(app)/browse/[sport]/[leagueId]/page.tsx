@@ -247,7 +247,7 @@ export default async function LeaguePage({ params, searchParams }: PageProps) {
 
   if (teamsRes.status === 'fulfilled' && teamsRes.value.ok) {
     const data = await teamsRes.value.json()
-    teams = parseTeams(data.response ?? [], sport)
+    teams = parseTeams(data.response ?? [], sport).sort((a, b) => a.name.localeCompare(b.name))
   }
 
   if (fixturesRes.status === 'fulfilled' && fixturesRes.value.ok) {

@@ -1,6 +1,7 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { Separator } from '@/components/ui/separator'
 import { CalendarSyncCard } from './CalendarSyncCard'
+import { SyncNowButton } from './SyncNowButton'
 import { format } from 'date-fns'
 
 const CHANGE_TYPE_LABELS: Record<string, { label: string; dot: string }> = {
@@ -63,11 +64,14 @@ export default async function SettingsPage() {
 
       {/* Fixture Sync Status */}
       <div className="rounded-2xl border border-white/[0.06] bg-card overflow-hidden">
-        <div className="px-5 py-4 border-b border-white/[0.05]">
-          <h2 className="font-semibold">Fixture Sync</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Fixtures auto-sync when you open the calendar. Rescheduled or cancelled games are detected automatically.
-          </p>
+        <div className="px-5 py-4 border-b border-white/[0.05] flex items-start justify-between gap-4">
+          <div>
+            <h2 className="font-semibold">Fixture Sync</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Fixtures auto-sync when you open the calendar. Rescheduled or cancelled games are detected automatically.
+            </p>
+          </div>
+          <SyncNowButton />
         </div>
         <div className="px-5 py-4 space-y-4">
           <div className="flex items-center justify-between text-sm">

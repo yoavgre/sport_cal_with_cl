@@ -6,7 +6,7 @@ import dayGridPlugin from '@fullcalendar/daygrid'
 import timeGridPlugin from '@fullcalendar/timegrid'
 import listPlugin from '@fullcalendar/list'
 import interactionPlugin from '@fullcalendar/interaction'
-import type { EventClickArg, EventInput } from '@fullcalendar/core'
+import type { EventClickArg, EventInput, EventContentArg } from '@fullcalendar/core'
 import type { Follow, CachedFixture } from '@/types/database'
 import type { CalendarEvent } from '@/types/sports'
 import { SPORT_COLORS } from '@/types/sports'
@@ -172,6 +172,27 @@ export default function CalendarView({ follows }: CalendarViewProps) {
             eventClick={handleEventClick}
             height="auto"
             nowIndicator
+            scrollTime="09:00:00"
+            slotMinTime="07:00:00"
+            slotMaxTime="26:00:00"
+            eventContent={(arg: EventContentArg) => {
+              if (arg.view.type !== 'listWeek') return true
+              const ev = arg.event.extendedProps as CalendarEvent
+              return (
+                <div className="flex items-center gap-2 min-w-0 flex-1 py-0.5">
+                  {ev.leagueLogo && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={ev.leagueLogo} alt="" className="w-4 h-4 object-contain flex-shrink-0 opacity-60" />
+                  )}
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium truncate">{arg.event.title}</div>
+                    {ev.leagueName && (
+                      <div className="text-xs text-muted-foreground truncate">{ev.leagueName}</div>
+                    )}
+                  </div>
+                </div>
+              )
+            }}
           />
         )}
       </div>
@@ -181,12 +202,52 @@ export default function CalendarView({ follows }: CalendarViewProps) {
           {selectedEvent && (
             <>
               <SheetHeader>
-                <SheetTitle className="pr-8">{selectedEvent.title}</SheetTitle>
-                <SheetDescription>
-                  {selectedEvent.leagueName}
-                </SheetDescription>
+                <SheetTitle className="sr-only">{selectedEvent.title}</SheetTitle>
               </SheetHeader>
-              <div className="mt-6 space-y-4">
+              <div className="mt-4 space-y-5">
+                {/* Team matchup with logos */}
+                {selectedEvent.homeTeam && selectedEvent.awayTeam ? (
+                  <div className="flex items-center justify-between gap-3 py-2">
+                    <div className="flex flex-col items-center gap-2 flex-1">
+                      {selectedEvent.homeTeamLogo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={selectedEvent.homeTeamLogo} alt={selectedEvent.homeTeam} className="w-14 h-14 object-contain" />
+                      ) : (
+                        <div className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center text-xl font-bold text-muted-foreground">
+                          {selectedEvent.homeTeam[0]}
+                        </div>
+                      )}
+                      <span className="text-sm font-medium text-center leading-tight">{selectedEvent.homeTeam}</span>
+                    </div>
+                    <div className="flex flex-col items-center shrink-0">
+                      {selectedEvent.homeScore != null && selectedEvent.awayScore != null ? (
+                        <span className="text-3xl font-bold tabular-nums">{selectedEvent.homeScore} – {selectedEvent.awayScore}</span>
+                      ) : (
+                        <span className="text-base font-semibold text-muted-foreground">vs</span>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-center gap-2 flex-1">
+                      {selectedEvent.awayTeamLogo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={selectedEvent.awayTeamLogo} alt={selectedEvent.awayTeam} className="w-14 h-14 object-contain" />
+                      ) : (
+                        <div className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center text-xl font-bold text-muted-foreground">
+                          {selectedEvent.awayTeam[0]}
+                        </div>
+                      )}
+                      <span className="text-sm font-medium text-center leading-tight">{selectedEvent.awayTeam}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="pt-2">
+                    <p className="font-semibold text-lg">{selectedEvent.title}</p>
+                    {selectedEvent.leagueName && (
+                      <p className="text-sm text-muted-foreground mt-0.5">{selectedEvent.leagueName}</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Badges */}
                 <div className="flex items-center gap-2">
                   <Badge
                     style={{ backgroundColor: SPORT_COLORS[selectedEvent.sport] }}
@@ -200,10 +261,16 @@ export default function CalendarView({ follows }: CalendarViewProps) {
                 </div>
 
                 <div className="space-y-2 text-sm">
+                  {selectedEvent.leagueName && selectedEvent.homeTeam && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Competition</span>
+                      <span className="font-medium">{selectedEvent.leagueName}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Date</span>
                     <span className="font-medium">
-                      {format(selectedEvent.start, 'EEEE, MMM d yyyy')}
+                      {format(selectedEvent.start, 'EEE, MMM d yyyy')}
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -215,15 +282,7 @@ export default function CalendarView({ follows }: CalendarViewProps) {
                   {selectedEvent.venue && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Venue</span>
-                      <span className="font-medium">{selectedEvent.venue}</span>
-                    </div>
-                  )}
-                  {(selectedEvent.homeScore != null || selectedEvent.awayScore != null) && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Score</span>
-                      <span className="font-medium text-lg">
-                        {selectedEvent.homeScore} - {selectedEvent.awayScore}
-                      </span>
+                      <span className="font-medium text-right max-w-[60%]">{selectedEvent.venue}</span>
                     </div>
                   )}
                 </div>
